@@ -105,6 +105,57 @@ class Redirects(commands.Cog):
 
     redirect = app_commands.Group(name="redirect", description="Manage URL redirects")
 
+    @redirect.command(name="help", description="Show all redirect commands and how to use them")
+    async def redirect_help(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Redirect Commands",
+            description="Manage URL redirects under `mlbb.site/NA/`.",
+            color=0x3A86FF
+        )
+        embed.add_field(
+            name="`/redirect list`",
+            value="List all active redirects with their type and destination hostname.",
+            inline=False
+        )
+        embed.add_field(
+            name="`/redirect details <slug>`",
+            value="Show the full source URL and full destination URL for a specific redirect.",
+            inline=False
+        )
+        embed.add_field(
+            name="`/redirect create-plain <slug> <title> <destination>`",
+            value=(
+                "Create a plain URL redirect.\n"
+                "Visitors see a countdown then are sent to `destination`.\n"
+                "> **slug** — becomes `mlbb.site/NA/<slug>/`\n"
+                "> **title** — page title shown during countdown\n"
+                "> **destination** — full URL to redirect to"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="`/redirect create-form <slug> <title> <form_url> [discord_id_field] [username_field]`",
+            value=(
+                "Create a Google Form redirect that authenticates via Discord OAuth and pre-fills identity fields.\n"
+                "Visitors authorize with Discord, then are sent to the form with their Discord ID and/or username pre-filled.\n"
+                "> **slug** — becomes `mlbb.site/NA/<slug>/`\n"
+                "> **title** — page title shown during auth\n"
+                "> **form_url** — paste the full Google Form pre-filled link to auto-detect fields, or a plain form URL\n"
+                "> **discord_id_field** *(optional)* — entry field ID for Discord ID; auto-extracted if URL contains `entry.XXXXX=discord_id_field`\n"
+                "> **username_field** *(optional)* — entry field ID for username; auto-extracted if URL contains `entry.XXXXX=username_field`\n\n"
+                "**To build a pre-filled URL:** open your Google Form → ⋮ → *Get pre-filled link* → "
+                "type `discord_id_field` in the Discord ID question and `username_field` in the username question → copy link."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="`/redirect delete <slug>`",
+            value="Permanently delete a redirect and remove its files.",
+            inline=False
+        )
+        embed.set_footer(text="All commands except /redirect help require an authorized role.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @redirect.command(name="list", description="List all active redirects")
     @admin_check()
     async def redirect_list(self, interaction: discord.Interaction):
