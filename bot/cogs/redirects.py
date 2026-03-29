@@ -5,7 +5,8 @@ import logging
 import os
 import shutil
 import re
-from typing import Optional
+from typing import Optional, List, Tuple
+from urllib.parse import urlparse, quote
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -16,6 +17,7 @@ import config
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "templates")
+PER_PAGE = 10
 
 
 def has_admin_role(interaction: discord.Interaction) -> bool:
@@ -29,11 +31,70 @@ def admin_check():
     async def predicate(interaction: discord.Interaction) -> bool:
         if not has_admin_role(interaction):
             await interaction.response.send_message(
-                "❌ You need the **admins** role to use this command.", ephemeral=True
+                "❌ You need an authorized role to use this command.", ephemeral=True
             )
             return False
         return True
     return app_commands.check(predicate)
+
+
+def _dest_host(url: str) -> str:
+    """Return just the hostname of a URL for abbreviated display."""
+    if not url:
+        return "unknown"
+    try:
+        host = urlparse(url).netloc
+        return host if host else url
+    except Exception:
+        return url
+
+
+def _build_list_embed(entries: List[Tuple[str, str, str]], page: int, total_pages: int) -> discord.Embed:
+    start = page * PER_PAGE
+    chunk = entries[start:start + PER_PAGE]
+    lines = []
+    for slug, rtype, dest in chunk:
+        url = f"{config.NA_BASE_URL}/{slug}/"
+        badge = "🔗" if rtype == "plain" else "📋" if rtype == "google_form" else "❓"
+        host = _dest_host(dest)
+        lines.append(f"{badge} [{url}]({url})  →  {host}")
+
+    embed = discord.Embed(
+        title=f"Active Redirects ({len(entries)})",
+        description="\n".join(lines) if lines else "No redirects on this page.",
+        color=0x3A86FF
+    )
+    embed.set_footer(text=f"Page {page + 1} of {total_pages}  •  🔗 plain  📋 google form")
+    return embed
+
+
+class RedirectListView(discord.ui.View):
+    def __init__(self, entries: List[Tuple[str, str, str]]):
+        super().__init__(timeout=120)
+        self.entries = entries
+        self.page = 0
+        self.total_pages = max(1, (len(entries) + PER_PAGE - 1) // PER_PAGE)
+        self._refresh_buttons()
+
+    def _refresh_buttons(self):
+        self.prev_btn.disabled = self.page == 0
+        self.next_btn.disabled = self.page >= self.total_pages - 1
+
+    @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page -= 1
+        self._refresh_buttons()
+        await interaction.response.edit_message(
+            embed=_build_list_embed(self.entries, self.page, self.total_pages), view=self
+        )
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page += 1
+        self._refresh_buttons()
+        await interaction.response.edit_message(
+            embed=_build_list_embed(self.entries, self.page, self.total_pages), view=self
+        )
 
 
 class Redirects(commands.Cog):
@@ -48,38 +109,29 @@ class Redirects(commands.Cog):
     @admin_check()
     async def redirect_list(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        base = config.NA_BASE_PATH
         try:
-            entries = sorted([
-                d for d in os.listdir(base)
-                if os.path.isdir(os.path.join(base, d)) and not d.startswith('.')
+            slugs = sorted([
+                d for d in os.listdir(config.NA_BASE_PATH)
+                if os.path.isdir(os.path.join(config.NA_BASE_PATH, d)) and not d.startswith('.')
             ])
         except Exception as e:
             await interaction.followup.send(f"❌ Error reading redirects: {e}", ephemeral=True)
             return
 
-        if not entries:
+        if not slugs:
             await interaction.followup.send("No redirects found.", ephemeral=True)
             return
 
-        lines = []
-        for slug in entries:
-            rtype, dest = self._read_redirect_info(slug)
-            type_badge = "🔗" if rtype == "plain" else "📋" if rtype == "google_form" else "❓"
-            lines.append(f"{type_badge} **{slug}** — {dest or 'unknown'}")
+        entries = [(slug, *self._read_redirect_info(slug)) for slug in slugs]
+        total_pages = max(1, (len(entries) + PER_PAGE - 1) // PER_PAGE)
+        view = RedirectListView(entries) if total_pages > 1 else None
+        embed = _build_list_embed(entries, 0, total_pages)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-        embed = discord.Embed(
-            title=f"Active Redirects ({len(entries)})",
-            description="\n".join(lines),
-            color=0x3A86FF
-        )
-        embed.set_footer(text=f"Base: {config.NA_BASE_URL}/")
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @redirect.command(name="info", description="Show details about a redirect")
+    @redirect.command(name="details", description="Show full source and destination for a redirect")
     @app_commands.describe(slug="The redirect slug (folder name)")
     @admin_check()
-    async def redirect_info(self, interaction: discord.Interaction, slug: str):
+    async def redirect_details(self, interaction: discord.Interaction, slug: str):
         await interaction.response.defer(ephemeral=True)
         path = os.path.join(config.NA_BASE_PATH, slug)
         if not os.path.isdir(path):
@@ -87,9 +139,14 @@ class Redirects(commands.Cog):
             return
 
         rtype, dest = self._read_redirect_info(slug)
+        source_url = f"{config.NA_BASE_URL}/{slug}/"
+        badge = "🔗 Plain" if rtype == "plain" else "📋 Google Form" if rtype == "google_form" else "❓ Unknown"
+
         embed = discord.Embed(title=f"Redirect: {slug}", color=0x3A86FF)
-        embed.add_field(name="URL", value=f"{config.NA_BASE_URL}/{slug}/", inline=False)
-        embed.add_field(name="Type", value=rtype or "unknown", inline=True)
+        embed.add_field(name="Type", value=badge, inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer
+        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
         embed.add_field(name="Destination", value=dest or "unknown", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -119,10 +176,8 @@ class Redirects(commands.Cog):
 
         try:
             shutil.copytree(tmpl_path, dest_path)
-            # Write script.js
             script = f'var destination = "{destination}";\n\n' + open(os.path.join(tmpl_path, "script.js.tmpl")).read()
             self._write(os.path.join(dest_path, "script.js"), script)
-            # Write index.html with title
             html = open(os.path.join(tmpl_path, "index.html.tmpl")).read().replace("{{TITLE}}", title)
             self._write(os.path.join(dest_path, "index.html"), html)
         except Exception as e:
@@ -130,10 +185,10 @@ class Redirects(commands.Cog):
             await interaction.followup.send(f"❌ Failed to create redirect: {e}", ephemeral=True)
             return
 
+        source_url = f"{config.NA_BASE_URL}/{slug}/"
         embed = discord.Embed(title="✅ Redirect Created", color=0x2ECC71)
-        embed.add_field(name="Slug", value=slug, inline=True)
-        embed.add_field(name="Type", value="Plain", inline=True)
-        embed.add_field(name="URL", value=f"{config.NA_BASE_URL}/{slug}/", inline=False)
+        embed.add_field(name="Type", value="🔗 Plain", inline=True)
+        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
         embed.add_field(name="Destination", value=destination, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
         logger.info(f"Created plain redirect: {slug} → {destination} by {interaction.user}")
@@ -169,7 +224,7 @@ class Redirects(commands.Cog):
         auth_url = (
             f"https://discord.com/api/oauth2/authorize"
             f"?client_id={config.REDIRECT_DISCORD_CLIENT_ID}"
-            f"&redirect_uri={self._url_encode(redirect_uri)}"
+            f"&redirect_uri={quote(redirect_uri, safe='')}"
             f"&response_type=token&scope=identify"
         )
 
@@ -194,11 +249,11 @@ class Redirects(commands.Cog):
             await interaction.followup.send(f"❌ Failed to create redirect: {e}", ephemeral=True)
             return
 
+        source_url = f"{config.NA_BASE_URL}/{slug}/"
         embed = discord.Embed(title="✅ Form Redirect Created", color=0x2ECC71)
-        embed.add_field(name="Slug", value=slug, inline=True)
-        embed.add_field(name="Type", value="Google Form", inline=True)
-        embed.add_field(name="URL", value=f"{config.NA_BASE_URL}/{slug}/", inline=False)
-        embed.add_field(name="Form", value=form_url, inline=False)
+        embed.add_field(name="Type", value="📋 Google Form", inline=True)
+        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
+        embed.add_field(name="Destination", value=form_url, inline=False)
         embed.add_field(name="Discord ID Field", value=f"entry.{discord_id_field}", inline=True)
         embed.add_field(name="Username Field", value=f"entry.{username_field}", inline=True)
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -229,8 +284,7 @@ class Redirects(commands.Cog):
     def _validate_new_slug(self, slug: str) -> Optional[str]:
         if not slug:
             return "Slug cannot be empty."
-        path = os.path.join(config.NA_BASE_PATH, slug)
-        if os.path.exists(path):
+        if os.path.exists(os.path.join(config.NA_BASE_PATH, slug)):
             return f"Redirect `{slug}` already exists."
         return None
 
@@ -238,21 +292,15 @@ class Redirects(commands.Cog):
         with open(path, 'w') as f:
             f.write(content)
 
-    def _url_encode(self, url: str) -> str:
-        from urllib.parse import quote
-        return quote(url, safe='')
-
-    def _read_redirect_info(self, slug: str):
+    def _read_redirect_info(self, slug: str) -> Tuple[Optional[str], Optional[str]]:
         """Returns (type, destination) by reading script.js"""
         script_path = os.path.join(config.NA_BASE_PATH, slug, "script.js")
         if not os.path.exists(script_path):
             return (None, None)
         content = open(script_path).read()
-        # plain redirect
         m = re.search(r'var destination\s*=\s*"([^"]+)"', content)
         if m:
             return ("plain", m.group(1))
-        # google form redirect
         m = re.search(r'baseurl\s*=\s*"([^"]+)"', content)
         if m:
             return ("google_form", m.group(1))
