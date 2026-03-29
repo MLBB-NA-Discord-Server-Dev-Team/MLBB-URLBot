@@ -35,28 +35,33 @@ To find the entry IDs for your Google Form: open the form, right-click a field �
 
 ## Setup
 
-### 1. Discord Application
+### 1. Two Discord Applications
 
-This bot uses the existing MLBB Discord application (`1073332119666966650`) for both bot commands and the OAuth2 identity flow on redirect pages — no separate app needed.
+This bot uses two separate Discord applications:
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → open application `1073332119666966650`
-2. **Bot** tab → copy the Token (reset it if needed)
-3. **OAuth2 → URL Generator**: scopes = `bot` + `applications.commands`, no special permissions → use the invite URL to add the bot to the guild
+| App | Client ID | Purpose |
+|-----|-----------|---------|
+| **URLBot** | `1487660903112507525` | Bot presence, slash commands |
+| **MLBB Auth** | `1073332119666966650` | OAuth2 identity flow on redirect pages |
+
+The bot application (`1487660903112507525`) needs no special permissions — all slash command responses are ephemeral.
+
+**Invite URL scopes:** `bot` + `applications.commands` (no permission bits required)
 
 ### 2. Discord OAuth redirect URIs
 
-For each redirect slug you create, its URL must be added as an **Allowed Redirect URI** in the application's **OAuth2** settings:
+For each redirect slug you create, its URL must be added as an **Allowed Redirect URI** in the **MLBB Auth app** (`1073332119666966650`) **OAuth2** settings:
 ```
 https://mlbb.site/NA/<slug>
 ```
-This only needs to be done once per slug — the bot handles creating the page files, but the URI must be whitelisted in the Developer Portal manually.
+This only needs to be done once per slug. The bot creates the page files automatically but cannot update the Developer Portal.
 
 ### 3. Configuration
 
 Copy `.env.example` to `.env` — only `DISCORD_TOKEN` needs to be set, everything else is pre-configured:
 
 ```env
-DISCORD_TOKEN=<bot token from application 1073332119666966650>
+DISCORD_TOKEN=<bot token from application 1487660903112507525>
 GUILD_IDS=850386581135163489
 LOG_LEVEL=INFO
 
