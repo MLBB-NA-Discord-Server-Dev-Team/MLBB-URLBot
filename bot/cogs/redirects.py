@@ -221,24 +221,14 @@ class Redirects(commands.Cog):
         # Parse the URL — strip entry.* params and extract field IDs
         base_url, extracted_fields = self._parse_form_url(form_url)
 
-        # Override extracted with explicitly provided values
+        # Explicit params override anything extracted from the URL
         if discord_id_field:
             extracted_fields[0] = discord_id_field.lstrip("entry.")
         if username_field:
             extracted_fields[1] = username_field.lstrip("entry.")
 
-        id_field = extracted_fields.get(0)
-        user_field = extracted_fields.get(1)
-
-        if not id_field or not user_field:
-            found = len(extracted_fields)
-            await interaction.followup.send(
-                f"❌ Could not determine both field IDs.\n"
-                f"Found {found} `entry.*` param(s) in URL. "
-                f"Please provide `discord_id_field` and `username_field` explicitly.",
-                ephemeral=True
-            )
-            return
+        id_field = extracted_fields.get(0, "")
+        user_field = extracted_fields.get(1, "")
 
         dest_path = os.path.join(config.NA_BASE_PATH, slug)
         tmpl_path = os.path.join(TEMPLATES_DIR, "google_form")
@@ -272,15 +262,17 @@ class Redirects(commands.Cog):
             return
 
         source_url = f"{config.NA_BASE_URL}/{slug}/"
-        auto = " *(auto-extracted)*" if not discord_id_field and not username_field else ""
+        auto = not discord_id_field and not username_field and (id_field or user_field)
         embed = discord.Embed(title="✅ Form Redirect Created", color=0x2ECC71)
         embed.add_field(name="Type", value="📋 Google Form", inline=True)
         embed.add_field(name="Source", value=source_url, inline=False)
         embed.add_field(name="Destination", value=base_url, inline=False)
-        embed.add_field(name="Discord ID Field", value=f"entry.{id_field}{auto}", inline=True)
-        embed.add_field(name="Username Field", value=f"entry.{user_field}{auto}", inline=True)
+        if id_field:
+            embed.add_field(name="Discord ID Field", value=f"entry.{id_field}" + (" *(auto-extracted)*" if auto else ""), inline=True)
+        if user_field:
+            embed.add_field(name="Username Field", value=f"entry.{user_field}" + (" *(auto-extracted)*" if auto else ""), inline=True)
         await interaction.followup.send(embed=embed, ephemeral=True)
-        logger.info(f"Created form redirect: {slug} → {base_url} (id={id_field} user={user_field}) by {interaction.user}")
+        logger.info(f"Created form redirect: {slug} → {base_url} (id={id_field or 'none'} user={user_field or 'none'}) by {interaction.user}")
 
     @redirect.command(name="delete", description="Delete a redirect")
     @app_commands.describe(slug="The redirect slug to delete")

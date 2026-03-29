@@ -41,9 +41,9 @@ window.onload = () => {
         document.getElementById('info').innerText = `${username}`;
         document.getElementById('info').innerHTML += `<br><img src="${pic}">`;
 
-        const fullpath = baseurl
-            + '&entry.' + uid  + '=' + id
-            + '&entry.' + user + '=' + encodeURIComponent(`${username}#${discriminator}`);
+        var fullpath = baseurl;
+        if (uid)  fullpath += '&entry.' + uid  + '=' + encodeURIComponent(id);
+        if (user) fullpath += '&entry.' + user + '=' + encodeURIComponent(`${username}#${discriminator}`);
 
         document.getElementById('redirect').style.display = 'block';
         document.getElementById('redirect').innerHTML +=
