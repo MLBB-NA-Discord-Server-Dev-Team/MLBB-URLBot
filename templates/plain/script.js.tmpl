@@ -1,0 +1,16 @@
+// Plain redirect — destination injected by URLBot
+var seconds = 3;
+var foo;
+
+function redirect(p) { document.location.href = p; }
+
+function updateSecs(p) {
+    document.getElementById("countdown").innerHTML = seconds;
+    seconds--;
+    if (seconds === -1) { clearInterval(foo); redirect(p); }
+}
+
+window.onload = () => {
+    document.getElementById('redirect').style.display = 'block';
+    foo = setInterval(function() { updateSecs(destination); }, 1000);
+};
