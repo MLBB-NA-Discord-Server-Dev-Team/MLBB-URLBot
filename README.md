@@ -37,26 +37,26 @@ To find the entry IDs for your Google Form: open the form, right-click a field �
 
 ### 1. Discord Application
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
-2. Create a new application
-3. **Bot** tab → Add Bot → copy the Token
-4. **OAuth2 → URL Generator**: scopes = `bot` + `applications.commands`, no special permissions → invite to your guild
+This bot uses the existing MLBB Discord application (`1073332119666966650`) for both bot commands and the OAuth2 identity flow on redirect pages — no separate app needed.
 
-### 2. Discord OAuth App (for Google Form redirects)
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → open application `1073332119666966650`
+2. **Bot** tab → copy the Token (reset it if needed)
+3. **OAuth2 → URL Generator**: scopes = `bot` + `applications.commands`, no special permissions → use the invite URL to add the bot to the guild
 
-The `REDIRECT_DISCORD_CLIENT_ID` in `.env` is the Discord application used for the OAuth2 identity flow on redirect pages. This can be the same application as the bot or a separate one.
+### 2. Discord OAuth redirect URIs
 
-For each redirect slug you create, add its full URL as an **Allowed Redirect URI** in that application's OAuth2 settings:
+For each redirect slug you create, its URL must be added as an **Allowed Redirect URI** in the application's **OAuth2** settings:
 ```
 https://mlbb.site/NA/<slug>
 ```
+This only needs to be done once per slug — the bot handles creating the page files, but the URI must be whitelisted in the Developer Portal manually.
 
 ### 3. Configuration
 
-Copy `.env.example` to `.env` and fill in:
+Copy `.env.example` to `.env` — only `DISCORD_TOKEN` needs to be set, everything else is pre-configured:
 
 ```env
-DISCORD_TOKEN=<bot token from Discord Developer Portal>
+DISCORD_TOKEN=<bot token from application 1073332119666966650>
 GUILD_IDS=850386581135163489
 LOG_LEVEL=INFO
 
@@ -65,7 +65,7 @@ ADMIN_ROLES=admins
 NA_BASE_PATH=/var/www/sites/mlbb.site/NA
 NA_BASE_URL=https://mlbb.site/NA
 
-REDIRECT_DISCORD_CLIENT_ID=<Discord app client_id for OAuth redirect pages>
+REDIRECT_DISCORD_CLIENT_ID=1073332119666966650
 ```
 
 ### 4. Install dependencies
