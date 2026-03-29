@@ -310,23 +310,31 @@ class Redirects(commands.Cog):
     def _parse_form_url(self, url: str) -> Tuple[str, dict]:
         """
         Split a (possibly pre-filled) Google Form URL into:
-          - base_url: the form URL with entry.* params stripped
-          - fields: {0: first_entry_id, 1: second_entry_id, ...} in order found
+          - base_url: the form URL with all entry.* params stripped
+          - fields: {0: discord_id_entry_id, 1: username_entry_id}
+            matched by placeholder value in the pre-filled URL:
+              entry.XXXXX=discord_id_field  → fields[0]
+              entry.XXXXX=username_field    → fields[1]
+            Any other entry value is stripped from the URL but not mapped.
         """
         from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
         parsed = urlparse(url)
         pairs = parse_qsl(parsed.query, keep_blank_values=True)
-        entry_ids = []
+        fields = {}
         clean_pairs = []
         for key, value in pairs:
             m = re.match(r'^entry\.(\d+)$', key)
             if m:
-                entry_ids.append(m.group(1))
+                entry_id = m.group(1)
+                if value.lower() == "discord_id_field":
+                    fields[0] = entry_id
+                elif value.lower() == "username_field":
+                    fields[1] = entry_id
+                # other entry values: strip from URL, don't map
             else:
                 clean_pairs.append((key, value))
         clean_query = urlencode(clean_pairs)
         base_url = urlunparse(parsed._replace(query=clean_query))
-        fields = {i: entry_ids[i] for i in range(len(entry_ids))}
         return base_url, fields
 
     def _read_redirect_info(self, slug: str) -> Tuple[Optional[str], Optional[str]]:
