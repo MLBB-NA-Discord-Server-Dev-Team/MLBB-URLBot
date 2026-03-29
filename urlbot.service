@@ -1,0 +1,16 @@
+[Unit]
+Description=MLBB URLBot — Discord redirect manager
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/MLBB-URLBot
+ExecStart=/root/MLBB-URLBot/venv/bin/python run.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
