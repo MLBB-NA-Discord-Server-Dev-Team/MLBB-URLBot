@@ -106,6 +106,7 @@ class Redirects(commands.Cog):
     redirect = app_commands.Group(name="redirect", description="Manage URL redirects")
 
     @redirect.command(name="help", description="Show all redirect commands and how to use them")
+    @admin_check()
     async def redirect_help(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="Redirect Commands",
@@ -153,7 +154,7 @@ class Redirects(commands.Cog):
             value="Permanently delete a redirect and remove its files.",
             inline=False
         )
-        embed.set_footer(text="All commands except /redirect help require an authorized role.")
+        embed.set_footer(text="All commands require an authorized role.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @redirect.command(name="list", description="List all active redirects")
