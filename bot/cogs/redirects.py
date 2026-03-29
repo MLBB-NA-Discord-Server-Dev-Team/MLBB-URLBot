@@ -197,9 +197,9 @@ class Redirects(commands.Cog):
     @app_commands.describe(
         slug="URL slug (e.g. player-survey → mlbb.site/NA/player-survey/)",
         title="Page title shown during redirect",
-        form_url="Google Form base URL (without pre-fill params)",
-        discord_id_field="Google Form entry ID for Discord ID field (e.g. 744072366)",
-        username_field="Google Form entry ID for Discord username field (e.g. 401452227)"
+        form_url="Full Google Form URL — paste the pre-filled link to auto-extract entry field IDs",
+        discord_id_field="entry field ID for Discord ID (auto-extracted if present in URL)",
+        username_field="entry field ID for Discord username (auto-extracted if present in URL)"
     )
     @admin_check()
     async def redirect_create_form(
@@ -208,14 +208,36 @@ class Redirects(commands.Cog):
         slug: str,
         title: str,
         form_url: str,
-        discord_id_field: str,
-        username_field: str
+        discord_id_field: Optional[str] = None,
+        username_field: Optional[str] = None
     ):
         await interaction.response.defer(ephemeral=True)
         slug = self._sanitize_slug(slug)
         err = self._validate_new_slug(slug)
         if err:
             await interaction.followup.send(f"❌ {err}", ephemeral=True)
+            return
+
+        # Parse the URL — strip entry.* params and extract field IDs
+        base_url, extracted_fields = self._parse_form_url(form_url)
+
+        # Override extracted with explicitly provided values
+        if discord_id_field:
+            extracted_fields[0] = discord_id_field.lstrip("entry.")
+        if username_field:
+            extracted_fields[1] = username_field.lstrip("entry.")
+
+        id_field = extracted_fields.get(0)
+        user_field = extracted_fields.get(1)
+
+        if not id_field or not user_field:
+            found = len(extracted_fields)
+            await interaction.followup.send(
+                f"❌ Could not determine both field IDs.\n"
+                f"Found {found} `entry.*` param(s) in URL. "
+                f"Please provide `discord_id_field` and `username_field` explicitly.",
+                ephemeral=True
+            )
             return
 
         dest_path = os.path.join(config.NA_BASE_PATH, slug)
@@ -233,9 +255,9 @@ class Redirects(commands.Cog):
             script = (
                 open(os.path.join(tmpl_path, "script.js.tmpl")).read()
                 .replace("{{AUTH_URL}}", auth_url)
-                .replace("{{BASE_URL}}", form_url)
-                .replace("{{UID_FIELD}}", discord_id_field)
-                .replace("{{USER_FIELD}}", username_field)
+                .replace("{{BASE_URL}}", base_url)
+                .replace("{{UID_FIELD}}", id_field)
+                .replace("{{USER_FIELD}}", user_field)
             )
             self._write(os.path.join(dest_path, "script.js"), script)
             html = (
@@ -250,14 +272,15 @@ class Redirects(commands.Cog):
             return
 
         source_url = f"{config.NA_BASE_URL}/{slug}/"
+        auto = " *(auto-extracted)*" if not discord_id_field and not username_field else ""
         embed = discord.Embed(title="✅ Form Redirect Created", color=0x2ECC71)
         embed.add_field(name="Type", value="📋 Google Form", inline=True)
         embed.add_field(name="Source", value=source_url, inline=False)
-        embed.add_field(name="Destination", value=form_url, inline=False)
-        embed.add_field(name="Discord ID Field", value=f"entry.{discord_id_field}", inline=True)
-        embed.add_field(name="Username Field", value=f"entry.{username_field}", inline=True)
+        embed.add_field(name="Destination", value=base_url, inline=False)
+        embed.add_field(name="Discord ID Field", value=f"entry.{id_field}{auto}", inline=True)
+        embed.add_field(name="Username Field", value=f"entry.{user_field}{auto}", inline=True)
         await interaction.followup.send(embed=embed, ephemeral=True)
-        logger.info(f"Created form redirect: {slug} → {form_url} by {interaction.user}")
+        logger.info(f"Created form redirect: {slug} → {base_url} (id={id_field} user={user_field}) by {interaction.user}")
 
     @redirect.command(name="delete", description="Delete a redirect")
     @app_commands.describe(slug="The redirect slug to delete")
@@ -291,6 +314,28 @@ class Redirects(commands.Cog):
     def _write(self, path: str, content: str):
         with open(path, 'w') as f:
             f.write(content)
+
+    def _parse_form_url(self, url: str) -> Tuple[str, dict]:
+        """
+        Split a (possibly pre-filled) Google Form URL into:
+          - base_url: the form URL with entry.* params stripped
+          - fields: {0: first_entry_id, 1: second_entry_id, ...} in order found
+        """
+        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        parsed = urlparse(url)
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        entry_ids = []
+        clean_pairs = []
+        for key, value in pairs:
+            m = re.match(r'^entry\.(\d+)$', key)
+            if m:
+                entry_ids.append(m.group(1))
+            else:
+                clean_pairs.append((key, value))
+        clean_query = urlencode(clean_pairs)
+        base_url = urlunparse(parsed._replace(query=clean_query))
+        fields = {i: entry_ids[i] for i in range(len(entry_ids))}
+        return base_url, fields
 
     def _read_redirect_info(self, slug: str) -> Tuple[Optional[str], Optional[str]]:
         """Returns (type, destination) by reading script.js"""
