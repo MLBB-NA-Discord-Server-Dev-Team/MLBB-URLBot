@@ -57,7 +57,7 @@ def _build_list_embed(entries: List[Tuple[str, str, str]], page: int, total_page
         url = f"{config.NA_BASE_URL}/{slug}/"
         badge = "🔗" if rtype == "plain" else "📋" if rtype == "google_form" else "❓"
         host = _dest_host(dest)
-        lines.append(f"{badge} [{url}]({url})  →  {host}")
+        lines.append(f"{badge} {url}  →  {host}")
 
     embed = discord.Embed(
         title=f"Active Redirects ({len(entries)})",
@@ -146,7 +146,7 @@ class Redirects(commands.Cog):
         embed.add_field(name="Type", value=badge, inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer
         embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer
-        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
+        embed.add_field(name="Source", value=source_url, inline=False)
         embed.add_field(name="Destination", value=dest or "unknown", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -188,7 +188,7 @@ class Redirects(commands.Cog):
         source_url = f"{config.NA_BASE_URL}/{slug}/"
         embed = discord.Embed(title="✅ Redirect Created", color=0x2ECC71)
         embed.add_field(name="Type", value="🔗 Plain", inline=True)
-        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
+        embed.add_field(name="Source", value=source_url, inline=False)
         embed.add_field(name="Destination", value=destination, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
         logger.info(f"Created plain redirect: {slug} → {destination} by {interaction.user}")
@@ -252,7 +252,7 @@ class Redirects(commands.Cog):
         source_url = f"{config.NA_BASE_URL}/{slug}/"
         embed = discord.Embed(title="✅ Form Redirect Created", color=0x2ECC71)
         embed.add_field(name="Type", value="📋 Google Form", inline=True)
-        embed.add_field(name="Source", value=f"[{source_url}]({source_url})", inline=False)
+        embed.add_field(name="Source", value=source_url, inline=False)
         embed.add_field(name="Destination", value=form_url, inline=False)
         embed.add_field(name="Discord ID Field", value=f"entry.{discord_id_field}", inline=True)
         embed.add_field(name="Username Field", value=f"entry.{username_field}", inline=True)
